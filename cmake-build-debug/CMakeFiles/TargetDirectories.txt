@@ -1,0 +1,3 @@
+D:/SCS/Project/VirtualMemorySimulator/VMSimulator/cmake-build-debug/CMakeFiles/VMSimulator.dir
+D:/SCS/Project/VirtualMemorySimulator/VMSimulator/cmake-build-debug/CMakeFiles/edit_cache.dir
+D:/SCS/Project/VirtualMemorySimulator/VMSimulator/cmake-build-debug/CMakeFiles/rebuild_cache.dir

@@ -7,4 +7,5 @@ add_executable(VMSimulator main.cpp
         frame.cpp
         memory.cpp
         page_table.cpp
-        mmu.cpp)
+        mmu.cpp
+)

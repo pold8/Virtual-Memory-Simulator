@@ -5,16 +5,14 @@ from typing import Dict, Optional
 
 @dataclass
 class PageTableEntry:
-    """Simplified page table entry."""
     page: int
-    frame_index: Optional[int] = None   # index of the frame holding this page
-    present: bool = False               # is the page currently in RAM?
-    referenced: bool = False            # gets set on access
-    dirty: bool = False                 # not really used yet
+    frame_index: Optional[int] = None
+    present: bool = False
+    referenced: bool = False
+    dirty: bool = False
 
 
 class PageTable:
-    """Maps virtual pages to PageTableEntry objects."""
 
     def __init__(self) -> None:
         self._entries: Dict[int, PageTableEntry] = {}
@@ -28,5 +26,4 @@ class PageTable:
         return self._entries.get(page)
 
     def all_entries(self) -> Dict[int, PageTableEntry]:
-        """Useful later for showing the whole page table in the UI."""
         return dict(self._entries)

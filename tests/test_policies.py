@@ -4,10 +4,6 @@ from simulator.replacement_policies.optimal import OptimalAlgorithm
 
 
 def run_simulation(policy, reference_string, num_frames: int):
-    """
-    Very small standalone simulator just for testing a ReplacementPolicy.
-    Frames store page numbers (ints) or None when empty.
-    """
     frames = [None] * num_frames
     hits = 0
     faults = 0
@@ -20,15 +16,12 @@ def run_simulation(policy, reference_string, num_frames: int):
         print(f"Step {i:02d}: request page {page}")
 
         if page in frames:
-            # Page hit
             hits += 1
             print(f"  -> HIT (frames: {frames})")
             continue
 
-        # Page fault
         faults += 1
 
-        # If there is a free frame, just use it (no replacement yet)
         if None in frames:
             free_index = frames.index(None)
             frames[free_index] = page
@@ -52,7 +45,6 @@ def run_simulation(policy, reference_string, num_frames: int):
 
 
 if __name__ == "__main__":
-    # Example reference string (classic from OS books)
     reference_string = [7, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2]
     num_frames = 3
 

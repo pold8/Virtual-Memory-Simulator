@@ -12,8 +12,4 @@ class ReplacementPolicy(ABC):
         reference_string: list[int],
         current_index: int,
     ) -> int:
-        """
-        Return the index of the frame to evict.
-        Called only when all frames are full and a page fault occurs.
-        """
         raise NotImplementedError

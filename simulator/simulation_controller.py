@@ -8,14 +8,16 @@ class SimulationController:
     def __init__(
         self,
         vm_config: VMConfig,
-        reference_string: list[tuple[int, str]],
-        policy: ReplacementPolicy
+        reference_string,
+        policy: ReplacementPolicy,
+        tlb_entries: int
     ):
         self.vm_config = vm_config
         self.reference_string = reference_string
         self.policy = policy
+        self.tlb_entries = tlb_entries
 
-        self.engine = SimulationEngine(vm_config, reference_string, policy)
+        self.engine = SimulationEngine(vm_config, reference_string, policy, tlb_entries)
         self.stats = StatisticsTracker()
 
     def step(self):
@@ -32,7 +34,7 @@ class SimulationController:
         return results
 
     def reset(self):
-        self.engine = SimulationEngine(self.vm_config, self.reference_string, self.policy)
+        self.engine = SimulationEngine(self.vm_config, self.reference_string, self.policy, self.tlb_entries)
         self.stats.reset()
 
     def is_finished(self):

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import List, Optional
 
 @dataclass
 class SimulationStepResult:
@@ -10,7 +10,8 @@ class SimulationStepResult:
     offset: int
     hit: bool
     fault: bool
+    tlb_hit: bool
     frame_index: Optional[int]
-    evicted_page: Optional[int]
     victim_frame_index: Optional[int]
+    evicted_page: Optional[int]
     frames_snapshot: List[Optional[int]]

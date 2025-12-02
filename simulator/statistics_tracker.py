@@ -1,35 +1,37 @@
 class StatisticsTracker:
 
-    def __init__(self) -> None:
-        self.hits = 0
-        self.faults = 0
-        self.steps = []
+    def __init__(self):
+        self.page_hits = 0
+        self.page_faults = 0
+        self.tlb_hits = 0
+        self.tlb_misses = 0
 
-    def record_step(self, step_result):
-        self.steps.append(step_result)
-
-        if step_result.hit:
-            self.hits += 1
+    def record_step(self, step):
+        if step.tlb_hit:
+            self.tlb_hits += 1
         else:
-            self.faults += 1
+            self.tlb_misses += 1
+
+        if step.hit:
+            self.page_hits += 1
+        else:
+            self.page_faults += 1
 
     @property
-    def total_accesses(self) -> int:
-        return self.hits + self.faults
+    def total_accesses(self):
+        return self.page_hits + self.page_faults
 
     @property
-    def hit_ratio(self) -> float:
-        if self.total_accesses == 0:
-            return 0.0
-        return self.hits / self.total_accesses
+    def tlb_total(self):
+        return self.tlb_hits + self.tlb_misses
 
     @property
-    def fault_ratio(self) -> float:
-        if self.total_accesses == 0:
-            return 0.0
-        return self.faults / self.total_accesses
+    def tlb_hit_ratio(self):
+        return self.tlb_hits / max(1, self.tlb_total)
+
+    @property
+    def page_fault_ratio(self):
+        return self.page_faults / max(1, self.total_accesses)
 
     def reset(self):
-        self.hits = 0
-        self.faults = 0
-        self.steps.clear()
+        self.__init__()

@@ -1,7 +1,5 @@
-from __future__ import annotations
 from dataclasses import dataclass
-from typing import Dict, Optional
-
+from typing import Optional, Dict
 
 @dataclass
 class PageTableEntry:
@@ -9,12 +7,10 @@ class PageTableEntry:
     frame_index: Optional[int] = None
     present: bool = False
     referenced: bool = False
-    dirty: bool = False
-
+    dirty: bool = False  # NEW
 
 class PageTable:
-
-    def __init__(self) -> None:
+    def __init__(self):
         self._entries: Dict[int, PageTableEntry] = {}
 
     def get_or_create(self, page: int) -> PageTableEntry:
@@ -25,5 +21,5 @@ class PageTable:
     def get(self, page: int) -> Optional[PageTableEntry]:
         return self._entries.get(page)
 
-    def all_entries(self) -> Dict[int, PageTableEntry]:
+    def all_entries(self):
         return dict(self._entries)

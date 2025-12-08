@@ -49,6 +49,7 @@ class SimulationEngine:
 
         tlb_frame = self.tlb.lookup(page, self.current_step)
         tlb_hit = tlb_frame is not None
+        write_back = False
 
         if tlb_hit:
             frame_index = tlb_frame
@@ -93,13 +94,17 @@ class SimulationEngine:
                     frames_list = self._frames_snapshot()
                     victim_frame_index = self.policy.select_victim(
                         frames_list,
-                        [addr for addr, _ in self.reference_string],
+                        [addr >> self.cfg.offset_bits for addr, _ in self.reference_string],  # Fix: pass pages
                         self.current_step
                     )
                     frame = self.frames[victim_frame_index]
 
                     evicted_page = frame.page
                     old_pte = self.page_table.get_or_create(evicted_page)
+                    
+                    if old_pte.dirty:
+                        write_back = True
+                    
                     old_pte.present = False
                     old_pte.frame_index = None
                     old_pte.referenced = False
@@ -134,6 +139,7 @@ class SimulationEngine:
             frame_index=frame_index,
             victim_frame_index=victim_frame_index if not tlb_hit else None,
             evicted_page=evicted_page if not tlb_hit else None,
+            write_back=write_back,
             frames_snapshot=self._frames_snapshot()
         )
 

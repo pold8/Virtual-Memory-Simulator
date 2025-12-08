@@ -1,58 +1,47 @@
+import unittest
 from simulator.replacement_policies.fifo import FIFOAlgorithm
 from simulator.replacement_policies.lru import LRUAlgorithm
 from simulator.replacement_policies.optimal import OptimalAlgorithm
 
+class TestPolicies(unittest.TestCase):
+    def run_policy(self, policy, reference_string, num_frames):
+        frames = [None] * num_frames
+        hits = 0
+        faults = 0
 
-def run_simulation(policy, reference_string, num_frames: int):
-    frames = [None] * num_frames
-    hits = 0
-    faults = 0
+        for i, page in enumerate(reference_string):
+            if page in frames:
+                hits += 1
+            else:
+                faults += 1
+                if None in frames:
+                    free_index = frames.index(None)
+                    frames[free_index] = page
+                else:
+                    victim_index = policy.select_victim(frames, reference_string, i)
+                    frames[victim_index] = page
+        return hits, faults
 
-    print(f"\n=== Testing {policy.__class__.__name__} ===")
-    print(f"Frames: {num_frames}")
-    print(f"Reference string: {reference_string}\n")
+    def test_fifo(self):
+        reference_string = [7, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2]
+        hits, faults = self.run_policy(FIFOAlgorithm(), reference_string, 3)
+        # Expected: 3 hits, 10 faults
+        self.assertEqual(hits, 3)
+        self.assertEqual(faults, 10)
 
-    for i, page in enumerate(reference_string):
-        print(f"Step {i:02d}: request page {page}")
+    def test_lru(self):
+        reference_string = [7, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2]
+        hits, faults = self.run_policy(LRUAlgorithm(), reference_string, 3)
+        # Expected: 4 hits, 9 faults
+        self.assertEqual(hits, 4)
+        self.assertEqual(faults, 9)
 
-        if page in frames:
-            hits += 1
-            print(f"  -> HIT (frames: {frames})")
-            continue
-
-        faults += 1
-
-        if None in frames:
-            free_index = frames.index(None)
-            frames[free_index] = page
-            print(f"  -> FAULT, loaded into free frame {free_index} (frames: {frames})")
-        else:
-            # Memory full: ask policy which frame to evict
-            victim_index = policy.select_victim(frames, reference_string, i)
-            evicted = frames[victim_index]
-            frames[victim_index] = page
-            print(
-                f"  -> FAULT, evict page {evicted} from frame {victim_index}, "
-                f"load page {page} (frames: {frames})"
-            )
-
-    print(f"\nResult for {policy.__class__.__name__}:")
-    print(f"  Hits:   {hits}")
-    print(f"  Faults: {faults}")
-    print(f"  Hit ratio:  {hits / len(reference_string):.3f}")
-    print(f"  Fault ratio:{faults / len(reference_string):.3f}")
-    print("-" * 40)
-
+    def test_optimal(self):
+        reference_string = [7, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2]
+        hits, faults = self.run_policy(OptimalAlgorithm(), reference_string, 3)
+        # Expected: 6 hits, 7 faults
+        self.assertEqual(hits, 6)
+        self.assertEqual(faults, 7)
 
 if __name__ == "__main__":
-    reference_string = [7, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2]
-    num_frames = 3
-
-    policies = [
-        FIFOAlgorithm(),
-        LRUAlgorithm(),
-        OptimalAlgorithm(),
-    ]
-
-    for p in policies:
-        run_simulation(p, reference_string, num_frames)
+    unittest.main()

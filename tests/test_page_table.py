@@ -6,7 +6,6 @@ class TestPageTable(unittest.TestCase):
         self.pt = PageTable()
 
     def test_get_or_create_new(self):
-        # Should create a new entry
         pte = self.pt.get_or_create(10)
         self.assertEqual(pte.page, 10)
         self.assertFalse(pte.present)

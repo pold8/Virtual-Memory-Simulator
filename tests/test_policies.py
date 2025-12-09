@@ -25,21 +25,18 @@ class TestPolicies(unittest.TestCase):
     def test_fifo(self):
         reference_string = [7, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2]
         hits, faults = self.run_policy(FIFOAlgorithm(), reference_string, 3)
-        # Expected: 3 hits, 10 faults
         self.assertEqual(hits, 3)
         self.assertEqual(faults, 10)
 
     def test_lru(self):
         reference_string = [7, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2]
         hits, faults = self.run_policy(LRUAlgorithm(), reference_string, 3)
-        # Expected: 4 hits, 9 faults
         self.assertEqual(hits, 4)
         self.assertEqual(faults, 9)
 
     def test_optimal(self):
         reference_string = [7, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2]
         hits, faults = self.run_policy(OptimalAlgorithm(), reference_string, 3)
-        # Expected: 6 hits, 7 faults
         self.assertEqual(hits, 6)
         self.assertEqual(faults, 7)
 

@@ -50,6 +50,9 @@ class SimulationEngine:
         tlb_frame = self.tlb.lookup(page, self.current_step)
         tlb_hit = tlb_frame is not None
         write_back = False
+        
+        victim_frame_index = None
+        evicted_page = None
 
         if tlb_hit:
             frame_index = tlb_frame

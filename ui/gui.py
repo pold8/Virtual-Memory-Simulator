@@ -3,7 +3,6 @@ import sys
 import os
 from typing import Dict, Optional
 
-# Add parent directory to path to import simulator modules
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 if parent_dir not in sys.path:
@@ -12,25 +11,24 @@ if parent_dir not in sys.path:
 from simulator.vm_config import VMConfig
 from simulator.simulation_controller import SimulationController
 from simulator.replacement_policies.lru import LRUAlgorithm
+from simulator.replacement_policies.fifo import FIFOAlgorithm
+from simulator.replacement_policies.optimal import OptimalAlgorithm
 from simulator.simulation_step_result import SimulationStepResult
 
-# --- Constants & Configuration ---
 WINDOW_WIDTH = 1200
 WINDOW_HEIGHT = 800
 FPS = 60
 
-# Colors
-COLOR_BG = (30, 30, 30)         # Dark Grey
-COLOR_PANEL = (45, 45, 45)      # Lighter Grey
-COLOR_ACCENT = (230, 60, 60)      # Brighter Red
-COLOR_HIGHLIGHT = (255, 100, 100) # Lighter Red for highlights
+COLOR_BG = (30, 30, 30)
+COLOR_PANEL = (45, 45, 45)
+COLOR_ACCENT = (230, 60, 60)
+COLOR_HIGHLIGHT = (255, 100, 100)
 COLOR_TEXT_MAIN = (240, 240, 240)
 COLOR_TEXT_DIM = (180, 180, 180)
 COLOR_GREEN = (50, 200, 100)
 COLOR_BLUE = (50, 100, 200)
 COLOR_BORDER = (60, 60, 60)
 
-# Layout
 CONFIG_PANEL_X = 20
 CONFIG_PANEL_Y = 60
 CONFIG_PANEL_W = WINDOW_WIDTH - 40
@@ -38,7 +36,6 @@ CONFIG_PANEL_H = 180
 CONTENT_TOP = CONFIG_PANEL_Y + CONFIG_PANEL_H + 20
 BUTTON_AREA_Y = WINDOW_HEIGHT - 70
 
-# Fonts
 FONT_MAIN = None
 FONT_HEADER = None
 FONT_SMALL = None
@@ -47,7 +44,6 @@ FONT_LARGE = None
 def init_fonts():
     global FONT_MAIN, FONT_HEADER, FONT_SMALL, FONT_LARGE
     pygame.font.init()
-    # Try to use a nice modern font if available, fallback to default
     available_fonts = pygame.font.get_fonts()
     font_name = "segoeui" if "segoeui" in available_fonts else None
     
@@ -90,14 +86,12 @@ class TextInput:
 
     def draw(self, surface):
         label_surf = FONT_SMALL.render(self.label, True, COLOR_TEXT_DIM)
-        # Increased vertical space from -18 to -24
         surface.blit(label_surf, (self.rect.x, self.rect.y - 24))
 
         pygame.draw.rect(surface, COLOR_BORDER, self.rect, 2 if self.active else 1, border_radius=6)
         bg_color = (55, 55, 55) if self.active else (50, 50, 50)
         pygame.draw.rect(surface, bg_color, self.rect, border_radius=6)
 
-        # Clip text to input box
         old_clip = surface.get_clip()
         surface.set_clip(self.rect.inflate(-8, -4))
 
@@ -122,6 +116,85 @@ class TextInput:
                     return
                 self.text += event.unicode
 
+class Dropdown:
+    def __init__(self, x, y, width, height, label, options, default_index=0):
+        self.rect = pygame.Rect(x, y, width, height)
+        self.label = label
+        self.options = options
+        self.selected_index = default_index
+        self.is_open = False
+        self.active = False # for click detection
+
+    @property
+    def selected_option(self):
+        return self.options[self.selected_index] if self.options else None
+
+    def draw(self, surface):
+        label_surf = FONT_SMALL.render(self.label, True, COLOR_TEXT_DIM)
+        surface.blit(label_surf, (self.rect.x, self.rect.y - 24))
+
+        pygame.draw.rect(surface, COLOR_BORDER, self.rect, 2 if self.active else 1, border_radius=6)
+        bg_color = (55, 55, 55) if self.active else (50, 50, 50)
+        pygame.draw.rect(surface, bg_color, self.rect, border_radius=6)
+
+        txt = self.selected_option
+        color = COLOR_TEXT_MAIN
+        text_surf = FONT_MAIN.render(txt, True, color)
+        text_rect = text_surf.get_rect(midleft=(self.rect.x + 8, self.rect.centery))
+        surface.blit(text_surf, text_rect)
+        
+        # Arrow
+        arrow_poly = [(self.rect.right - 20, self.rect.centery - 3), 
+                      (self.rect.right - 10, self.rect.centery - 3), 
+                      (self.rect.right - 15, self.rect.centery + 3)]
+        pygame.draw.polygon(surface, COLOR_TEXT_DIM, arrow_poly)
+
+    def draw_list(self, surface):
+        if not self.is_open:
+            return
+            
+        list_rect = pygame.Rect(self.rect.x, self.rect.bottom + 2, self.rect.width, len(self.options) * 30 + 4)
+        pygame.draw.rect(surface, (40, 40, 40), list_rect, border_radius=6)
+        pygame.draw.rect(surface, COLOR_BORDER, list_rect, 1, border_radius=6)
+        
+        mouse_pos = pygame.mouse.get_pos()
+        
+        for i, option in enumerate(self.options):
+            opt_rect = pygame.Rect(list_rect.x, list_rect.y + 2 + i * 30, list_rect.width, 30)
+            
+            if opt_rect.collidepoint(mouse_pos):
+                pygame.draw.rect(surface, (60, 60, 60), opt_rect)
+                
+            txt_surf = FONT_MAIN.render(option, True, COLOR_TEXT_MAIN)
+            txt_rect = txt_surf.get_rect(midleft=(opt_rect.x + 8, opt_rect.centery))
+            surface.blit(txt_surf, txt_rect)
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if self.is_open:
+                # Check if clicked inside list
+                list_rect = pygame.Rect(self.rect.x, self.rect.bottom + 2, self.rect.width, len(self.options) * 30 + 4)
+                if list_rect.collidepoint(event.pos):
+                    # Clicked option
+                    rel_y = event.pos[1] - (list_rect.y + 2)
+                    idx = rel_y // 30
+                    if 0 <= idx < len(self.options):
+                        self.selected_index = idx
+                        self.is_open = False
+                    return True # consumed
+                else:
+                    self.is_open = False
+                    # Check if clicked toggle again happens below but self.is_open is now false, so proceed
+            
+            if self.rect.collidepoint(event.pos):
+                self.is_open = not self.is_open
+                self.active = True
+                return True
+            else:
+                self.active = False
+                self.is_open = False
+        return False
+
 class MemoryVisualizer:
     def __init__(self):
         pygame.init()
@@ -130,7 +203,6 @@ class MemoryVisualizer:
         pygame.display.set_caption("Virtual Memory Simulator")
         self.clock = pygame.time.Clock()
         
-        # Preset configuration & inputs
         self.default_reference_text = (
             "120 R, 240 R, 4095 W, 8192 R, 9000 W, 256 R, 9000 R, 40000 R, "
             "120 W, 8192 W, 40000 W, 256 W, 500 R, 600 R, 700 R, 800 R, "
@@ -138,11 +210,10 @@ class MemoryVisualizer:
         )
         self.reference_string = self.parse_reference_string(self.default_reference_text)
         self.vm_config = VMConfig(
-            virtual_memory_size=65536,     # 64 KB
-            physical_memory_size=4096,     # 4 KB (16 frames)
-            offset_bits=8                  # 256 bytes per page
+            virtual_memory_size=65536,
+            physical_memory_size=4096,
+            offset_bits=8
         )
-        # Store defaults for reset
         self.default_config = {
             "virtual": 65536,
             "physical": 4096,
@@ -162,39 +233,32 @@ class MemoryVisualizer:
         self.info_message = ""
         self.page_writes: Dict[int, Dict[str, int]] = {}
 
-        # GUI Elements
         self.input_fields = self.build_input_fields()
-        # Buttons are initialized inside build_input_fields to maintain layout consistency
         
 
 
-    # --- Input helpers ---
     def build_input_fields(self):
-        # Zone 2 Left: Config Panel (Top)
-        # Increased start_y to clear the "Configuration" title text completely
         start_y = 125 
         x = 30
         width = 220
         height = 30
-        spacing = 45 # Increased spacing for breathing room
+        spacing = 45
 
         fields = {
             "virtual": TextInput(x, start_y, width, height, "Virtual Memory (bytes)", self.vm_config.virtual_memory_size, numeric=True),
             "physical": TextInput(x, start_y + spacing, width, height, "Physical Memory (bytes)", self.vm_config.physical_memory_size, numeric=True),
             "offset": TextInput(x, start_y + spacing * 2, width, height, "Offset Bits", self.vm_config.offset_bits, numeric=True),
-            "reference": TextInput(x, start_y + spacing * 3, width, height, "Reference String", self.default_reference_text, placeholder="120 R, ..."),
+            "reference": TextInput(x, start_y + spacing * 4, width, height, "Reference String", self.default_reference_text, placeholder="120 R, ..."),
         }
         
-        # Config Actions (Submit/Reset Defaults) just below inputs
+        self.policy_dropdown = Dropdown(x, start_y + spacing * 3, width, height, "Policy", ["LRU", "FIFO", "Optimal"], 0)
+        
         btn_y = start_y + spacing * 4 + 10
         self.submit_button = Button(x, btn_y, 105, 30, "Submit", self.apply_inputs)
         self.default_button = Button(x + 115, btn_y, 105, 30, "Defaults", self.reset_defaults)
         
-        # Random Reference Button
         self.random_button = Button(x, btn_y + 40, width, 30, "Random Ref String", self.generate_random_reference)
         
-        # Zone 2 Left: Simulation Controls (Bottom)
-        # Push controls down to separate panel
         ctrl_y = btn_y + 90 
         self.buttons = [
             Button(x, ctrl_y, 105, 35, "Next Step", self.next_step),
@@ -262,13 +326,25 @@ class MemoryVisualizer:
                 offset_bits=offset_bits
             )
             self.reference_string = reference_string
+            
+            p_name = self.policy_dropdown.selected_option
+            if p_name == "FIFO":
+                self.policy = FIFOAlgorithm()
+            elif p_name == "Optimal":
+                self.policy = OptimalAlgorithm()
+            else:
+                self.policy = LRUAlgorithm()
+            
             self.build_controller()
-            self.info_message = "Applied inputs and reset simulation."
+            self.info_message = "Applied inputs."
         except ValueError as e:
             self.info_message = f"Input error: {e}"
 
     def build_controller(self):
-        self.policy = LRUAlgorithm()
+        # Policy is set in apply_inputs or init. If re-building same policy, keep it.
+        if not hasattr(self, 'policy'):
+             self.policy = LRUAlgorithm()
+             
         self.controller = SimulationController(
             self.vm_config, self.reference_string, self.policy, tlb_entries=4
         )
@@ -309,27 +385,21 @@ class MemoryVisualizer:
 
     def generate_random_reference(self):
         import random
-        # Generate 20-30 ops with locality of reference to ensure hits
         count = random.randint(20, 30)
         ops = []
         
-        # Define a "working set" of a few pages to generate hits
-        # e.g. select 3 random pages that will be accessed frequently
         total_pages = self.vm_config.virtual_memory_size // self.vm_config.page_size
         working_set = [random.randint(0, total_pages - 1) for _ in range(3)]
         
         for _ in range(count):
-            # 80% chance to pick from working set (Locality), 20% random
             if random.random() < 0.8:
                 page = random.choice(working_set)
             else:
                 page = random.randint(0, total_pages - 1)
                 
-            # Random offset within the page
             offset = random.randint(0, self.vm_config.page_size - 1)
             addr = page * self.vm_config.page_size + offset
             
-            # 25% Write, 75% Read
             op = 'W' if random.random() < 0.25 else 'R'
             ops.append(f"{addr} {op}")
         
@@ -344,22 +414,24 @@ class MemoryVisualizer:
         while running:
             current_time = pygame.time.get_ticks()
             
-            # Event Handling
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
                 for btn in self.buttons + [self.submit_button, self.default_button, self.random_button]:
                     btn.handle_event(event)
+                
+                # Check dropdown first to capture clicks on list if open
+                if self.policy_dropdown.handle_event(event):
+                    continue
+
                 for field in self.input_fields.values():
                     field.handle_event(event)
 
-            # Auto Run Logic
             if self.auto_run and not self.simulation_finished:
                 if current_time - self.last_step_time > self.auto_run_delay:
                     self.next_step()
                     self.last_step_time = current_time
 
-            # Drawing
             self.draw()
             pygame.display.flip()
             self.clock.tick(FPS)
@@ -371,8 +443,8 @@ class MemoryVisualizer:
         gap = 12
 
         # Tweak heights to ensure fit
-        row2_h = 510  # Reduced slightly from 520
-        config_h = 360  # Reduced height
+        row2_h = 510  # Reduced height further
+        config_h = 390  # Reduced height for even tighter config
         
         row2_y = header_h + gap
 
@@ -386,14 +458,14 @@ class MemoryVisualizer:
         col3_w = WINDOW_WIDTH - col3_x - 20
 
         row3_y = row2_y + row2_h + gap
-        # Force bottom panels to fit strictly within window minus margin
         row3_h = WINDOW_HEIGHT - row3_y - 15
-        if row3_h < 150: # safety floor
+        if row3_h < 150:
              row3_h = 150 
 
         bottom_split_w = (WINDOW_WIDTH - 40 - gap) // 2
 
-        controls_h = max(130, row2_h - config_h - gap)
+        # config_h = 420 # Increased for Policy dropdown - OLD VALUE
+        controls_h = max(110, row2_h - config_h - gap)
         controls_y = row2_y + config_h + gap
 
         return {
@@ -420,40 +492,52 @@ class MemoryVisualizer:
         base_y = layout["row2_y"] + 70
         field_w = layout["col1_w"] - 28
         field_h = 30
-        spacing = 52 # Increased spacing
+        field_w = layout["col1_w"] - 28
+        field_h = 30
+        field_w = layout["col1_w"] - 28
+        field_h = 30
+        spacing = 46 # Even tighter spacing
         gap_small = 12
-
-        # Stack inputs evenly
-        for idx, key in enumerate(["virtual", "physical", "offset", "reference"]):
-            field = self.input_fields[key]
-            field.rect.x = base_x
-            field.rect.y = base_y + idx * spacing
-            field.rect.w = field_w
-            field.rect.h = field_h
-
-        # Config buttons (Submit/Defaults)
-        # Position them relative to base_y (inputs start)
-        # 4 inputs * spacing(42) = 168 offset.
-        # Button Y should be approx base_y + 168 + padding
-        btn_y = base_y + spacing * 4 - 6
+        # button_space = 40 # Not used
+        btn_y = base_y + spacing * 5 + 2 # Minimal gap after inputs
         
         half_w = (field_w - gap_small) // 2
         self.submit_button.rect.update(base_x, btn_y, half_w, 34)
         self.default_button.rect.update(base_x + half_w + gap_small, btn_y, half_w, 34)
         
-        # Random button below them
-        rand_y = btn_y + 34 + 10
+        rand_y = btn_y + 34 + 6 # Tiny gap
         self.random_button.rect.update(base_x, rand_y, field_w, 34)
 
-        # Sim Control buttons
-        # Start top of the panel since there is no title now
         ctrl_y = layout["controls_y"] + 15
-        btn_h = 34
-        gap_btn = 10
-        self.buttons[0].rect.update(base_x, ctrl_y, field_w, btn_h)                    # Next
-        self.buttons[1].rect.update(base_x, ctrl_y + btn_h + gap_btn, field_w, btn_h)  # Auto
-        # Reset button often needs less vertical space or same
-        self.buttons[2].rect.update(base_x, ctrl_y + (btn_h + gap_btn) * 2, field_w, btn_h) # Reset
+        
+        # update inputs
+        for idx, key in enumerate(["virtual", "physical", "offset", "reference"]):
+             # shift reference down by 2 slots (offset(2) + policy(3) -> ref(4))
+             pos_idx = idx
+             if key == "reference": pos_idx = 4
+             
+             field = self.input_fields[key]
+             field.rect.x = base_x
+             field.rect.y = base_y + pos_idx * spacing
+             field.rect.w = field_w
+             field.rect.h = field_h
+             
+        self.policy_dropdown.rect.x = base_x
+        self.policy_dropdown.rect.y = base_y + 3 * spacing
+        self.policy_dropdown.rect.w = field_w
+        self.policy_dropdown.rect.h = field_h
+        # Update option rects for dropdown
+        # self.policy_dropdown.rect is updated above, rendering handles the list position dynamically
+
+        btn_h = 32
+        gap_btn = 8 
+        # Side by side for Next/Auto
+        half_w = (field_w - gap_small) // 2
+        self.buttons[0].rect.update(base_x, ctrl_y, half_w, btn_h)
+        self.buttons[1].rect.update(base_x + half_w + gap_small, ctrl_y, half_w, btn_h)
+        
+        # Reset Sim below them
+        self.buttons[2].rect.update(base_x, ctrl_y + btn_h + gap_btn, field_w, btn_h)
 
     def draw(self):
         self.screen.fill(COLOR_BG)
@@ -461,7 +545,6 @@ class MemoryVisualizer:
 
         layout = self.compute_layout()
         self.apply_layout(layout)
-        # Provide inst section height for downstream drawing
         self.inst_section_height = 200
 
         row2_y = layout["row2_y"]
@@ -480,13 +563,15 @@ class MemoryVisualizer:
         controls_h = layout["controls_h"]
         controls_y = layout["controls_y"]
 
-        # --- Drawing Zone 2 ---
         self.draw_panel_rect(col1_x, row2_y, col1_w, config_h, "Configuration")
-        # Draw second panel without title ("")
         self.draw_panel_rect(col1_x, controls_y, col1_w, controls_h, "")
         
         for field in self.input_fields.values():
             field.draw(self.screen)
+        
+        # Draw Policy Dropdown Base (but not list yet)
+        self.policy_dropdown.draw(self.screen)
+        
         self.submit_button.draw(self.screen)
         self.default_button.draw(self.screen)
         self.random_button.draw(self.screen)
@@ -495,21 +580,18 @@ class MemoryVisualizer:
                 btn.text = "Stop Auto" if self.auto_run else "Auto Run"
             btn.draw(self.screen)
 
-        # 2. TLB (Center) - Occupies full height now
-        # Removed Address Breakdown as requested to maximize TLB space
         self.draw_tlb_view(col2_x, row2_y, col2_w, row2_h)
         
-        # 3. Page Table (Right)
         self.draw_virtual_memory_view(col3_x, row2_y, col3_w, row2_h)
         
-        # --- Drawing Zone 3 ---
         
-        # 4. Stats & Reference (Bottom Left)
         self.draw_stats_panel(20, row3_y, bottom_split_w, row3_h)
         
-        # 5. Physical Memory (Bottom Right)
         pm_x = 20 + bottom_split_w + gap
         self.draw_memory_view(pm_x, row3_y, bottom_split_w, row3_h)
+
+        # Draw Dropdown overlay last to ensure it's on top of everything
+        self.policy_dropdown.draw_list(self.screen)
 
     def draw_instruction_breakdown(self, x, y, w, h):
         self.draw_panel_rect(x, y, w, h, "Address Breakdown")
@@ -521,17 +603,13 @@ class MemoryVisualizer:
 
         res = self.last_step_result
         
-        # Box for Virtual Address
         va_val = res.virtual_address
         page = res.page
         offset = res.offset
         
-        # Binary/Hex strings if needed, but decimal is clearer for general users
-        # Layout: [ Virtual Address ] -> [ Page # ] [ Offset ]
         cx = x + w // 2
-        cy = y + 55  # Keep everything higher in the panel
-        
-        # VA Box
+        cy = y + 55
+
         va_rect = pygame.Rect(0, 0, 140, 32)
         va_rect.center = (cx, cy)
         pygame.draw.rect(self.screen, COLOR_PANEL, va_rect, border_radius=6)
@@ -540,11 +618,9 @@ class MemoryVisualizer:
         va_txt = FONT_MAIN.render(f"VA: {va_val}", True, COLOR_TEXT_MAIN)
         self.screen.blit(va_txt, va_txt.get_rect(center=va_rect.center))
         
-        # Arrows
         pygame.draw.line(self.screen, COLOR_TEXT_DIM, (cx, cy + 16), (cx - 50, cy + 52), 2)
         pygame.draw.line(self.screen, COLOR_TEXT_DIM, (cx, cy + 16), (cx + 50, cy + 52), 2)
         
-        # Page / Offset Boxes
         p_rect = pygame.Rect(0, 0, 90, 32)
         p_rect.center = (cx - 70, cy + 70)
         
@@ -560,13 +636,10 @@ class MemoryVisualizer:
         self.screen.blit(p_txt, p_txt.get_rect(center=p_rect.center))
         self.screen.blit(o_txt, o_txt.get_rect(center=o_rect.center))
         
-        # Operation
         op_text = "READ" if res.operation == "R" else "WRITE"
         op_col = COLOR_GREEN if res.operation == "R" else COLOR_HIGHLIGHT
         
-        # Position OP text safely within the panel
         op_rect = pygame.Rect(0, 0, 140, 34)
-        # Anchor the op text just above the bottom padding of this panel to avoid overlap
         target_bottom = y + h - 30
         op_rect.center = (cx, target_bottom)
         pygame.draw.rect(self.screen, COLOR_BG, op_rect, border_radius=6)
@@ -584,7 +657,6 @@ class MemoryVisualizer:
         return rect
 
     def draw_header(self):
-        # Header background
         header_rect = pygame.Rect(0, 0, WINDOW_WIDTH, 60)
         pygame.draw.rect(self.screen, (25, 25, 25), header_rect)
         pygame.draw.line(self.screen, COLOR_BORDER, (0, 60), (WINDOW_WIDTH, 60), 2)
@@ -592,12 +664,9 @@ class MemoryVisualizer:
         title = FONT_HEADER.render("Virtual Memory Simulator", True, COLOR_TEXT_MAIN)
         self.screen.blit(title, (20, 10))
         
-        # Critical State Indicators
-        # 1. Step Counter
         step_txt = FONT_MAIN.render(f"Step: {self.controller.engine.current_step}", True, COLOR_TEXT_DIM)
         self.screen.blit(step_txt, (500, 20))
         
-        # 2. Hit/Miss/Fault Indicator (Big & Colorful)
         status_rect = pygame.Rect(650, 10, 200, 40)
         status_msg = "READY"
         status_col = COLOR_TEXT_DIM
@@ -606,7 +675,7 @@ class MemoryVisualizer:
             res = self.last_step_result
             if not res.hit:
                 status_msg = "PAGE FAULT"
-                status_col = COLOR_ACCENT # Red
+                status_col = COLOR_ACCENT
             elif res.tlb_hit:
                 status_msg = "TLB HIT"
                 status_col = COLOR_GREEN
@@ -614,14 +683,12 @@ class MemoryVisualizer:
                 status_msg = "RAM HIT"
                 status_col = COLOR_BLUE
                 
-        # Draw status pill
         if status_msg != "READY":
              pygame.draw.rect(self.screen, status_col, status_rect, border_radius=20)
              stat_txt = FONT_LARGE.render(status_msg, True, (255, 255, 255))
              rect = stat_txt.get_rect(center=status_rect.center)
              self.screen.blit(stat_txt, rect)
              
-        # Global Status (Running/Finished)
         r_status = "IDLE"
         if self.auto_run: r_status = "RUNNING >>"
         elif self.simulation_finished: r_status = "FINISHED"
@@ -629,29 +696,20 @@ class MemoryVisualizer:
         s_surf = FONT_MAIN.render(r_status, True, COLOR_HIGHLIGHT if self.auto_run else COLOR_TEXT_DIM)
         self.screen.blit(s_surf, (WINDOW_WIDTH - 150, 20))
 
-    # Removed draw_config_panel and draw_reference_string from generic usage or kept if needed.
-    # We replaced config panel drawing in draw().
-    # Ref string is no longer a primary panel, or we can stash it in Stats? 
-    # Current stats panel is large, we can put Ref string in there?
-    # Let's Modify draw_stats_panel to include Reference String list at bottom.
-
     def draw_memory_view(self, x, y, w, h):
         self.draw_panel_rect(x, y, w, h, "Phys. Mem") # Shorter title
         
-        # Clip content
         old_clip = self.screen.get_clip()
         self.screen.set_clip(pygame.Rect(x + 5, y + 50, w - 10, h - 55))
         
         frames = self.controller.engine.frames
         
-        cols = 4 # Wide view again
+        cols = 4
         rows = max(1, len(frames) // cols + (1 if len(frames) % cols else 0))
         cell_w = (w - 40) // cols
         
-        # Calculate cell_h dynamically to fit available height if possible, else fixed
         available_h = h - 80
         cell_h = min(60, available_h // rows) if rows > 0 else 60
-        # Ensure minimum size
         cell_h = max(40, cell_h)
 
         for i, frame in enumerate(frames):
@@ -661,7 +719,6 @@ class MemoryVisualizer:
             cx = x + 20 + col * cell_w
             cy = y + 70 + row * cell_h
             
-            # Skip drawing if outside bounds (optimization)
             if cy + cell_h > y + h: break
             
             frame_rect = pygame.Rect(cx + 5, cy + 5, cell_w - 10, cell_h - 10)
@@ -686,17 +743,14 @@ class MemoryVisualizer:
             pygame.draw.rect(self.screen, color, frame_rect, border_radius=6)
             pygame.draw.rect(self.screen, COLOR_BORDER, frame_rect, 1, border_radius=6)
             
-            # Frame ID in top-left, small
             id_text = FONT_SMALL.render(f"F{i}", True, COLOR_TEXT_DIM)
             self.screen.blit(id_text, (cx + 8, cy + 6))
             
-            # Page ID in center, larger
             if not frame.is_free:
                 content_text = FONT_MAIN.render(f"Pg {frame.page}", True, COLOR_TEXT_MAIN)
                 rect = content_text.get_rect(center=frame_rect.center)
                 self.screen.blit(content_text, rect)
             else:
-                 # Optional: Draw 'Empty' or nothing
                  pass
         
         self.screen.set_clip(old_clip)
@@ -709,7 +763,6 @@ class MemoryVisualizer:
             self.screen.blit(empty, (x + 20, y + 60))
             return
 
-        # Clip content
         old_clip = self.screen.get_clip()
         self.screen.set_clip(pygame.Rect(x + 5, y + 50, w - 10, h - 55))
 
@@ -720,7 +773,6 @@ class MemoryVisualizer:
         start_y = y + 70
         visible = max(1, (h - 70) // line_height)
 
-        # Keep the highlighted page in view if possible
         start_index = 0
         if highlight_page is not None:
             for idx, entry in enumerate(entries):
@@ -767,19 +819,17 @@ class MemoryVisualizer:
     def draw_tlb_view(self, x, y, w, h):
         self.draw_panel_rect(x, y, w, h, "TLB")
         
-        # Clip content
         old_clip = self.screen.get_clip()
         self.screen.set_clip(pygame.Rect(x + 5, y + 50, w - 10, h - 55))
         
         tlb = self.controller.engine.tlb
         entries = tlb.entries
         
-        item_w = (w - 30) // 2 # 2 cols for TLB
-        item_h = 72 # Taller rows to avoid text crowding
+        item_w = (w - 30) // 2
+        item_h = 72
         
         sorted_entries = sorted(entries.values(), key=lambda e: e.last_access)
         
-        # Grid layout for TLB
         for i, entry in enumerate(sorted_entries):
             col = i % 2
             row = i // 2
@@ -787,7 +837,6 @@ class MemoryVisualizer:
             ex = x + 15 + col * item_w
             ey = y + 50 + row * (item_h + 8)
             
-            # Avoid drawing outside
             if ex + item_w > x + w: break
 
             rect = pygame.Rect(ex + 5, ey, item_w - 10, item_h)
@@ -812,12 +861,10 @@ class MemoryVisualizer:
     def draw_stats_panel(self, x, y, w, h):
         self.draw_panel_rect(x, y, w, h, "Statistics & Reference Stream")
         
-        # Clip content
         old_clip = self.screen.get_clip()
         self.screen.set_clip(pygame.Rect(x + 5, y + 40, w - 10, h - 45))
         
-        # Split into Stats (Left) and Ref Stream (Right)
-        split_x = x + 240 # Width for stats
+        split_x = x + 240
         
         stats = self.controller.stats
         lines = [
@@ -834,10 +881,8 @@ class MemoryVisualizer:
             surf = FONT_MAIN.render(line, True, COLOR_TEXT_MAIN)
             self.screen.blit(surf, (x + 20, start_y + i * 30))
             
-        # Divider Line
         pygame.draw.line(self.screen, COLOR_BORDER, (split_x, y + 50), (split_x, y + h - 10), 2)
         
-        # Reference Stream (Right side)
         ref_x = split_x + 10
         ref_w = w - (split_x - x) - 20
         
@@ -852,7 +897,6 @@ class MemoryVisualizer:
             
             addr, op = self.reference_string[idx]
             
-            # Highlight next immediate op
             col = COLOR_HIGHLIGHT if i == 0 else COLOR_TEXT_DIM
             bg_col = (50, 50, 50) if i == 0 else None
             

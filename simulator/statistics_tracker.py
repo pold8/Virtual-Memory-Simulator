@@ -5,7 +5,7 @@ class StatisticsTracker:
         self.page_faults = 0
         self.tlb_hits = 0
         self.tlb_misses = 0
-        self.disk_writes = 0  # NEW
+        self.disk_writes = 0
 
     def record_step(self, step):
         if step.tlb_hit:

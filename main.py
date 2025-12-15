@@ -1,31 +1,40 @@
+from simulator.replacement_policies.fifo import FIFOAlgorithm
 from simulator.vm_config import VMConfig
 from simulator.simulation_controller import SimulationController
 from simulator.replacement_policies.lru import LRUAlgorithm
+from simulator.replacement_policies.optimal import OptimalAlgorithm
 
 def main():
 
     vm = VMConfig(
-        virtual_memory_size=65536,     # 64 KB
-        physical_memory_size=4096,      # 4 KB
-        offset_bits=8                   # 256 byte pages (2^8)
+        virtual_memory_size=2048,     # 2 KB
+        physical_memory_size=16,      # 16 bytes = 4 frames
+        offset_bits=2                 # 4 byte pages (2^2)
     )
 
     reference = [
-        (120, "R"),
-        (240, "R"),
-        (4095, "W"),
-        (8192, "R"),
-        (9000, "W"),
-        (256, "R"),
-        (9000, "R"),
-        (40000, "R")
+        (0, "R"),
+        (4, "R"),
+        (8, "R"),
+        (12, "R"),
+        (16, "R"),
+        (0, "R"),
+        (4, "R"),
+        (20, "R"),
+        (24, "R"),
+        (28, "R"),
+        (32, "R"),
+        (0, "W"),
+        (4, "W"),
+        (36, "R"),
+        (40, "R")
     ]
 
     controller = SimulationController(
         vm,
         reference,
-        policy=LRUAlgorithm(),
-        tlb_entries=4
+        policy=OptimalAlgorithm(),
+        tlb_entries=10
     )
 
     while not controller.is_finished():

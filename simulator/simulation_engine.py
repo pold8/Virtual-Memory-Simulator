@@ -12,7 +12,7 @@ class SimulationEngine:
     def __init__(
         self,
         vm_config: VMConfig,
-        reference_string: List[tuple[int, str]],   # (VA, R/W)
+        reference_string: List[tuple[int, str]],
         policy: ReplacementPolicy,
         tlb_entries: int
     ):
@@ -97,7 +97,7 @@ class SimulationEngine:
                     frames_list = self._frames_snapshot()
                     victim_frame_index = self.policy.select_victim(
                         frames_list,
-                        [addr >> self.cfg.offset_bits for addr, _ in self.reference_string],  # Fix: pass pages
+                        [addr >> self.cfg.offset_bits for addr, _ in self.reference_string],
                         self.current_step
                     )
                     frame = self.frames[victim_frame_index]

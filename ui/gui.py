@@ -123,7 +123,7 @@ class Dropdown:
         self.options = options
         self.selected_index = default_index
         self.is_open = False
-        self.active = False # for click detection
+        self.active = False
 
     @property
     def selected_option(self):
@@ -143,7 +143,6 @@ class Dropdown:
         text_rect = text_surf.get_rect(midleft=(self.rect.x + 8, self.rect.centery))
         surface.blit(text_surf, text_rect)
         
-        # Arrow
         arrow_poly = [(self.rect.right - 20, self.rect.centery - 3), 
                       (self.rect.right - 10, self.rect.centery - 3), 
                       (self.rect.right - 15, self.rect.centery + 3)]
@@ -172,19 +171,16 @@ class Dropdown:
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
             if self.is_open:
-                # Check if clicked inside list
                 list_rect = pygame.Rect(self.rect.x, self.rect.bottom + 2, self.rect.width, len(self.options) * 30 + 4)
                 if list_rect.collidepoint(event.pos):
-                    # Clicked option
                     rel_y = event.pos[1] - (list_rect.y + 2)
                     idx = rel_y // 30
                     if 0 <= idx < len(self.options):
                         self.selected_index = idx
                         self.is_open = False
-                    return True # consumed
+                    return True
                 else:
                     self.is_open = False
-                    # Check if clicked toggle again happens below but self.is_open is now false, so proceed
             
             if self.rect.collidepoint(event.pos):
                 self.is_open = not self.is_open
@@ -204,30 +200,31 @@ class MemoryVisualizer:
         self.clock = pygame.time.Clock()
         
         self.default_reference_text = (
-            "120 R, 240 R, 4095 W, 8192 R, 9000 W, 256 R, 9000 R, 40000 R, "
-            "120 W, 8192 W, 40000 W, 256 W, 500 R, 600 R, 700 R, 800 R, "
-            "500 W, 4095 R, 120 R, 24000 W"
+            "0 R, 4 R, 8 R, 12 R, 16 R, 0 R, 4 R, 20 R, "
+            "24 R, 28 R, 32 R, 0 W, 4 W, 36 R, 40 R"
         )
         self.reference_string = self.parse_reference_string(self.default_reference_text)
         self.vm_config = VMConfig(
-            virtual_memory_size=65536,
-            physical_memory_size=4096,
-            offset_bits=8
+            virtual_memory_size=2048,
+            physical_memory_size=16,
+            offset_bits=2
         )
         self.default_config = {
-            "virtual": 65536,
-            "physical": 4096,
-            "offset": 8,
+            "virtual": 2048,
+            "physical": 16,
+            "offset": 2,
+            "tlb_entries": 10,
             "reference": self.default_reference_text
         }
+        self.tlb_entries = 10
 
         self.policy = LRUAlgorithm()
         self.controller = SimulationController(
-            self.vm_config, self.reference_string, self.policy, tlb_entries=4
+            self.vm_config, self.reference_string, self.policy, tlb_entries=self.tlb_entries
         )
         self.last_step_result: Optional[SimulationStepResult] = None
         self.auto_run = False
-        self.auto_run_delay = 500  # ms
+        self.auto_run_delay = 500
         self.last_step_time = 0
         self.simulation_finished = False
         self.info_message = ""
@@ -248,12 +245,13 @@ class MemoryVisualizer:
             "virtual": TextInput(x, start_y, width, height, "Virtual Memory (bytes)", self.vm_config.virtual_memory_size, numeric=True),
             "physical": TextInput(x, start_y + spacing, width, height, "Physical Memory (bytes)", self.vm_config.physical_memory_size, numeric=True),
             "offset": TextInput(x, start_y + spacing * 2, width, height, "Offset Bits", self.vm_config.offset_bits, numeric=True),
-            "reference": TextInput(x, start_y + spacing * 4, width, height, "Reference String", self.default_reference_text, placeholder="120 R, ..."),
+            "tlb_entries": TextInput(x, start_y + spacing * 3, width, height, "TLB Entries", self.tlb_entries, numeric=True),
+            "reference": TextInput(x, start_y + spacing * 5, width, height, "Reference String", self.default_reference_text, placeholder="120 R, ..."),
         }
         
-        self.policy_dropdown = Dropdown(x, start_y + spacing * 3, width, height, "Policy", ["LRU", "FIFO", "Optimal"], 0)
+        self.policy_dropdown = Dropdown(x, start_y + spacing * 4, width, height, "Policy", ["LRU", "FIFO", "Optimal"], 0)
         
-        btn_y = start_y + spacing * 4 + 10
+        btn_y = start_y + spacing * 5 + 10
         self.submit_button = Button(x, btn_y, 105, 30, "Submit", self.apply_inputs)
         self.default_button = Button(x + 115, btn_y, 105, 30, "Defaults", self.reset_defaults)
         
@@ -278,7 +276,10 @@ class MemoryVisualizer:
             token = raw.strip()
             if not token:
                 continue
-            if " " in token:
+            if token.isdigit():
+                addr_str = token
+                op = "R"
+            elif " " in token:
                 parts = token.split()
                 if len(parts) != 2:
                     raise ValueError(f"Invalid token '{token}'. Use 'addr op'.")
@@ -305,7 +306,11 @@ class MemoryVisualizer:
             virtual_size = int(self.input_fields["virtual"].text or 0)
             physical_size = int(self.input_fields["physical"].text or 0)
             offset_bits = int(self.input_fields["offset"].text or 0)
+            tlb_entries = int(self.input_fields["tlb_entries"].text or 0)
             reference_string = self.parse_reference_string(self.input_fields["reference"].text)
+
+            if tlb_entries <= 0:
+                raise ValueError("TLB entries must be positive.")
 
             if offset_bits <= 0:
                 raise ValueError("Offset bits must be positive.")
@@ -326,6 +331,7 @@ class MemoryVisualizer:
                 offset_bits=offset_bits
             )
             self.reference_string = reference_string
+            self.tlb_entries = tlb_entries
             
             p_name = self.policy_dropdown.selected_option
             if p_name == "FIFO":
@@ -341,12 +347,11 @@ class MemoryVisualizer:
             self.info_message = f"Input error: {e}"
 
     def build_controller(self):
-        # Policy is set in apply_inputs or init. If re-building same policy, keep it.
         if not hasattr(self, 'policy'):
              self.policy = LRUAlgorithm()
              
         self.controller = SimulationController(
-            self.vm_config, self.reference_string, self.policy, tlb_entries=4
+            self.vm_config, self.reference_string, self.policy, tlb_entries=self.tlb_entries
         )
         self.last_step_result = None
         self.simulation_finished = False
@@ -358,6 +363,7 @@ class MemoryVisualizer:
         self.input_fields["virtual"].text = str(self.default_config["virtual"])
         self.input_fields["physical"].text = str(self.default_config["physical"])
         self.input_fields["offset"].text = str(self.default_config["offset"])
+        self.input_fields["tlb_entries"].text = str(self.default_config["tlb_entries"])
         self.input_fields["reference"].text = self.default_config["reference"]
         self.apply_inputs()
         self.info_message = "Reset to default values."
@@ -420,7 +426,6 @@ class MemoryVisualizer:
                 for btn in self.buttons + [self.submit_button, self.default_button, self.random_button]:
                     btn.handle_event(event)
                 
-                # Check dropdown first to capture clicks on list if open
                 if self.policy_dropdown.handle_event(event):
                     continue
 
@@ -442,9 +447,7 @@ class MemoryVisualizer:
         header_h = 60
         gap = 12
 
-        # Tweak heights to ensure fit
-        row2_h = 510  # Reduced height further
-        config_h = 390  # Reduced height for even tighter config
+        row2_h = 500
         
         row2_y = header_h + gap
 
@@ -464,10 +467,6 @@ class MemoryVisualizer:
 
         bottom_split_w = (WINDOW_WIDTH - 40 - gap) // 2
 
-        # config_h = 420 # Increased for Policy dropdown - OLD VALUE
-        controls_h = max(110, row2_h - config_h - gap)
-        controls_y = row2_y + config_h + gap
-
         return {
             "header_h": header_h,
             "gap": gap,
@@ -482,39 +481,20 @@ class MemoryVisualizer:
             "col3_x": col3_x,
             "col3_w": col3_w,
             "bottom_split_w": bottom_split_w,
-            "config_h": config_h,
-            "controls_h": controls_h,
-            "controls_y": controls_y,
         }
 
     def apply_layout(self, layout):
         base_x = layout["col1_x"] + 14
         base_y = layout["row2_y"] + 70
         field_w = layout["col1_w"] - 28
-        field_h = 30
-        field_w = layout["col1_w"] - 28
-        field_h = 30
-        field_w = layout["col1_w"] - 28
-        field_h = 30
-        spacing = 46 # Even tighter spacing
-        gap_small = 12
-        # button_space = 40 # Not used
-        btn_y = base_y + spacing * 5 + 2 # Minimal gap after inputs
+        field_h = 28
+        spacing = 44
+        gap_small = 10
+        btn_h = 30
         
-        half_w = (field_w - gap_small) // 2
-        self.submit_button.rect.update(base_x, btn_y, half_w, 34)
-        self.default_button.rect.update(base_x + half_w + gap_small, btn_y, half_w, 34)
-        
-        rand_y = btn_y + 34 + 6 # Tiny gap
-        self.random_button.rect.update(base_x, rand_y, field_w, 34)
-
-        ctrl_y = layout["controls_y"] + 15
-        
-        # update inputs
-        for idx, key in enumerate(["virtual", "physical", "offset", "reference"]):
-             # shift reference down by 2 slots (offset(2) + policy(3) -> ref(4))
+        for idx, key in enumerate(["virtual", "physical", "offset", "tlb_entries", "reference"]):
              pos_idx = idx
-             if key == "reference": pos_idx = 4
+             if key == "reference": pos_idx = 5
              
              field = self.input_fields[key]
              field.rect.x = base_x
@@ -523,21 +503,24 @@ class MemoryVisualizer:
              field.rect.h = field_h
              
         self.policy_dropdown.rect.x = base_x
-        self.policy_dropdown.rect.y = base_y + 3 * spacing
+        self.policy_dropdown.rect.y = base_y + 4 * spacing
         self.policy_dropdown.rect.w = field_w
         self.policy_dropdown.rect.h = field_h
-        # Update option rects for dropdown
-        # self.policy_dropdown.rect is updated above, rendering handles the list position dynamically
 
-        btn_h = 32
-        gap_btn = 8 
-        # Side by side for Next/Auto
+        btn_y = base_y + 5 * spacing + 40
         half_w = (field_w - gap_small) // 2
-        self.buttons[0].rect.update(base_x, ctrl_y, half_w, btn_h)
-        self.buttons[1].rect.update(base_x + half_w + gap_small, ctrl_y, half_w, btn_h)
+        self.submit_button.rect.update(base_x, btn_y, half_w, btn_h)
+        self.default_button.rect.update(base_x + half_w + gap_small, btn_y, half_w, btn_h)
         
-        # Reset Sim below them
-        self.buttons[2].rect.update(base_x, ctrl_y + btn_h + gap_btn, field_w, btn_h)
+        btn_y += btn_h + 6
+        self.random_button.rect.update(base_x, btn_y, field_w, btn_h)
+
+        btn_y += btn_h + 6
+        self.buttons[0].rect.update(base_x, btn_y, half_w, btn_h)
+        self.buttons[1].rect.update(base_x + half_w + gap_small, btn_y, half_w, btn_h)
+        
+        btn_y += btn_h + 6
+        self.buttons[2].rect.update(base_x, btn_y, field_w, btn_h)
 
     def draw(self):
         self.screen.fill(COLOR_BG)
@@ -559,17 +542,12 @@ class MemoryVisualizer:
         row3_y = layout["row3_y"]
         row3_h = layout["row3_h"]
         bottom_split_w = layout["bottom_split_w"]
-        config_h = layout["config_h"]
-        controls_h = layout["controls_h"]
-        controls_y = layout["controls_y"]
 
-        self.draw_panel_rect(col1_x, row2_y, col1_w, config_h, "Configuration")
-        self.draw_panel_rect(col1_x, controls_y, col1_w, controls_h, "")
+        self.draw_panel_rect(col1_x, row2_y, col1_w, row2_h, "Configuration")
         
         for field in self.input_fields.values():
             field.draw(self.screen)
         
-        # Draw Policy Dropdown Base (but not list yet)
         self.policy_dropdown.draw(self.screen)
         
         self.submit_button.draw(self.screen)
@@ -590,7 +568,6 @@ class MemoryVisualizer:
         pm_x = 20 + bottom_split_w + gap
         self.draw_memory_view(pm_x, row3_y, bottom_split_w, row3_h)
 
-        # Draw Dropdown overlay last to ensure it's on top of everything
         self.policy_dropdown.draw_list(self.screen)
 
     def draw_instruction_breakdown(self, x, y, w, h):
@@ -697,7 +674,7 @@ class MemoryVisualizer:
         self.screen.blit(s_surf, (WINDOW_WIDTH - 150, 20))
 
     def draw_memory_view(self, x, y, w, h):
-        self.draw_panel_rect(x, y, w, h, "Phys. Mem") # Shorter title
+        self.draw_panel_rect(x, y, w, h, "Phys. Mem")
         
         old_clip = self.screen.get_clip()
         self.screen.set_clip(pygame.Rect(x + 5, y + 50, w - 10, h - 55))
@@ -817,7 +794,9 @@ class MemoryVisualizer:
         self.screen.set_clip(old_clip)
 
     def draw_tlb_view(self, x, y, w, h):
-        self.draw_panel_rect(x, y, w, h, "TLB")
+        tlb_count = len(self.controller.engine.tlb.entries)
+        tlb_cap = self.controller.tlb_entries
+        self.draw_panel_rect(x, y, w, h, f"TLB ({tlb_count}/{tlb_cap})")
         
         old_clip = self.screen.get_clip()
         self.screen.set_clip(pygame.Rect(x + 5, y + 50, w - 10, h - 55))
@@ -830,7 +809,9 @@ class MemoryVisualizer:
         
         sorted_entries = sorted(entries.values(), key=lambda e: e.last_access)
         
-        for i, entry in enumerate(sorted_entries):
+        capacity = self.controller.tlb_entries
+        
+        for i in range(capacity):
             col = i % 2
             row = i // 2
             
@@ -841,20 +822,29 @@ class MemoryVisualizer:
 
             rect = pygame.Rect(ex + 5, ey, item_w - 10, item_h)
             
-            is_hit = False
-            if self.last_step_result and self.last_step_result.tlb_hit:
-                if self.last_step_result.page == entry.page:
-                    is_hit = True
-            
-            color = COLOR_GREEN if is_hit else (70, 70, 70)
-            
-            pygame.draw.rect(self.screen, color, rect, border_radius=8)
-            
-            txt_page = FONT_MAIN.render(f"Page: {entry.page}", True, COLOR_TEXT_MAIN)
-            txt_frame = FONT_MAIN.render(f"Frame: {entry.frame}", True, COLOR_TEXT_MAIN)
-            
-            self.screen.blit(txt_page, (ex + 15, ey + 10))
-            self.screen.blit(txt_frame, (ex + 15, ey + 42))
+            if i < len(sorted_entries):
+                entry = sorted_entries[i]
+                
+                is_hit = False
+                if self.last_step_result and self.last_step_result.tlb_hit:
+                    if self.last_step_result.page == entry.page:
+                        is_hit = True
+                
+                color = COLOR_GREEN if is_hit else (70, 70, 70)
+                pygame.draw.rect(self.screen, color, rect, border_radius=8)
+                
+                txt_page = FONT_MAIN.render(f"Page: {entry.page}", True, COLOR_TEXT_MAIN)
+                txt_frame = FONT_MAIN.render(f"Frame: {entry.frame}", True, COLOR_TEXT_MAIN)
+                
+                self.screen.blit(txt_page, (ex + 15, ey + 10))
+                self.screen.blit(txt_frame, (ex + 15, ey + 42))
+            else:
+                pygame.draw.rect(self.screen, (40, 40, 40), rect, border_radius=8)
+                pygame.draw.rect(self.screen, (60, 60, 60), rect, 2, border_radius=8)
+                
+                empty_txt = FONT_MAIN.render("Empty", True, COLOR_TEXT_DIM)
+                txt_rect = empty_txt.get_rect(center=rect.center)
+                self.screen.blit(empty_txt, txt_rect)
             
         self.screen.set_clip(old_clip)
 
@@ -867,19 +857,24 @@ class MemoryVisualizer:
         split_x = x + 240
         
         stats = self.controller.stats
-        lines = [
-            f"Total Steps: {self.controller.engine.current_step}",
-            f"TLB Hits: {stats.tlb_hits} ({stats.tlb_hit_ratio:.1%})",
-            f"Pg Faults: {stats.page_faults} ({stats.page_fault_ratio:.1%})",
-            f"Pg Hits: {stats.page_hits}",
-            f"Disk Writes: {stats.disk_writes}",
-        ]
+        lines = [f"Steps: {self.controller.engine.current_step}"]
         
-        line_height = 30
-        start_y = y + 60
+        if stats.tlb_hits == stats.page_hits and stats.tlb_misses == stats.page_faults:
+             lines.append(f"Hits (TLB+RAM): {stats.tlb_hits} ({stats.tlb_hit_ratio:.1%})")
+             lines.append(f"Miss/Fault: {stats.tlb_misses} ({(1 - stats.tlb_hit_ratio):.1%})")
+        else:
+             lines.append(f"TLB Hits: {stats.tlb_hits} ({stats.tlb_hit_ratio:.1%})")
+             lines.append(f"TLB Misses: {stats.tlb_misses} ({(1 - stats.tlb_hit_ratio):.1%})")
+             lines.append(f"Pg Faults: {stats.page_faults} ({stats.page_fault_ratio:.1%})")
+             lines.append(f"Pg Hits: {stats.page_hits} ({(1 - stats.page_fault_ratio):.1%})")
+             
+        lines.append(f"Disk Writes: {stats.disk_writes}")
+        
+        line_height = 22
+        start_y = y + 45
         for i, line in enumerate(lines):
             surf = FONT_MAIN.render(line, True, COLOR_TEXT_MAIN)
-            self.screen.blit(surf, (x + 20, start_y + i * 30))
+            self.screen.blit(surf, (x + 15, start_y + i * line_height))
             
         pygame.draw.line(self.screen, COLOR_BORDER, (split_x, y + 50), (split_x, y + h - 10), 2)
         
@@ -911,7 +906,3 @@ class MemoryVisualizer:
             self.screen.blit(surf, (ref_x + 5, line_y))
 
         self.screen.set_clip(old_clip)
-
-if __name__ == "__main__":
-    viz = MemoryVisualizer()
-    viz.run()

@@ -24,18 +24,15 @@ class TLB:
 
     def insert(self, page: int, frame: int, current_step: int):
         """Insert or update a TLB entry using LRU replacement."""
-        # Case 1: Already in TLB
         if page in self.entries:
             self.entries[page].frame = frame
             self.entries[page].last_access = current_step
             return
 
-        # Case 2: Free space
         if len(self.entries) < self.size:
             self.entries[page] = TLBEntry(page, frame, current_step)
             return
 
-        # Case 3: LRU replacement
         lru_page = min(self.entries.values(), key=lambda e: e.last_access).page
         del self.entries[lru_page]
         self.entries[page] = TLBEntry(page, frame, current_step)

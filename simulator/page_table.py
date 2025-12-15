@@ -7,7 +7,7 @@ class PageTableEntry:
     frame_index: Optional[int] = None
     present: bool = False
     referenced: bool = False
-    dirty: bool = False  # NEW
+    dirty: bool = False
 
 class PageTable:
     def __init__(self):

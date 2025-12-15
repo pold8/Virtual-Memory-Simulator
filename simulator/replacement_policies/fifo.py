@@ -9,7 +9,6 @@ from simulator.base_policy import ReplacementPolicy
 class FIFOAlgorithm(ReplacementPolicy):
 
     def __init__(self) -> None:
-        # Queue of frame indices, left = oldest, right = newest
         self._order: deque[int] = deque()
 
     def _ensure_initialized(self, frames: List[Optional[int]]) -> None:

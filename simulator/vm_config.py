@@ -2,13 +2,13 @@ from dataclasses import dataclass
 
 @dataclass
 class VMConfig:
-    virtual_memory_size: int      # bytes
-    physical_memory_size: int     # bytes
-    offset_bits: int              # NEW: number of offset bits
+    virtual_memory_size: int
+    physical_memory_size: int
+    offset_bits: int
 
     @property
     def page_size(self) -> int:
-        return 1 << self.offset_bits    # 2^offset_bits
+        return 1 << self.offset_bits
 
     @property
     def num_frames(self) -> int:

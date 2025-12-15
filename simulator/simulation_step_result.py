@@ -14,5 +14,5 @@ class SimulationStepResult:
     frame_index: Optional[int]
     victim_frame_index: Optional[int]
     evicted_page: Optional[int]
-    write_back: bool  # NEW
+    write_back: bool
     frames_snapshot: List[Optional[int]]

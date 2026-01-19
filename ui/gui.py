@@ -16,7 +16,7 @@ from simulator.replacement_policies.optimal import OptimalAlgorithm
 from simulator.simulation_step_result import SimulationStepResult
 
 WINDOW_WIDTH = 1200
-WINDOW_HEIGHT = 800
+WINDOW_HEIGHT = 900
 FPS = 60
 
 COLOR_BG = (30, 30, 30)
@@ -83,8 +83,21 @@ class TextInput:
         self.placeholder = str(placeholder if placeholder else text)
         self.active = False
         self.numeric = numeric
+        self.clear_rect = None
+        
+        self.cursor_pos = len(self.text)
+        self.scroll_offset = 0
+        self.cursor_visible = True
+        self.last_blink_time = 0
 
     def draw(self, surface):
+        current_time = pygame.time.get_ticks()
+        if self.active and current_time - self.last_blink_time > 500:
+            self.cursor_visible = not self.cursor_visible
+            self.last_blink_time = current_time
+        if not self.active:
+            self.cursor_visible = False
+
         label_surf = FONT_SMALL.render(self.label, True, COLOR_TEXT_DIM)
         surface.blit(label_surf, (self.rect.x, self.rect.y - 24))
 
@@ -92,29 +105,147 @@ class TextInput:
         bg_color = (55, 55, 55) if self.active else (50, 50, 50)
         pygame.draw.rect(surface, bg_color, self.rect, border_radius=6)
 
-        old_clip = surface.get_clip()
-        surface.set_clip(self.rect.inflate(-8, -4))
+        # Draw Clear Button if text exists
+        self.clear_rect = None
+        text_area_w = self.rect.width - 16
+        
+        if self.text:
+            btn_size = 20
+            self.clear_rect = pygame.Rect(
+                self.rect.right - btn_size - 4, 
+                self.rect.centery - btn_size // 2, 
+                btn_size, btn_size
+            )
+            mouse_pos = pygame.mouse.get_pos()
+            is_hover = self.clear_rect.collidepoint(mouse_pos)
+            
+            col = COLOR_HIGHLIGHT if is_hover else COLOR_TEXT_DIM
+            c_center = self.clear_rect.center
+            offset_x = 4
+            pygame.draw.line(surface, col, (c_center[0] - offset_x, c_center[1] - offset_x), (c_center[0] + offset_x, c_center[1] + offset_x), 2)
+            pygame.draw.line(surface, col, (c_center[0] - offset_x, c_center[1] + offset_x), (c_center[0] + offset_x, c_center[1] - offset_x), 2)
+            
+            text_area_w -= (btn_size + 4)
 
-        txt = self.text if self.text else self.placeholder
+        # Clipping
+        old_clip = surface.get_clip()
+        clip_rect = self.rect.inflate(-16, -4)
+        if text_area_w < clip_rect.width:
+             clip_rect.width = max(0, text_area_w)
+        surface.set_clip(clip_rect)
+
+        # Content Rendering
+        txt_to_render = self.text if self.text else self.placeholder
         color = COLOR_TEXT_MAIN if self.text else COLOR_TEXT_DIM
-        text_surf = FONT_MAIN.render(txt, True, color)
-        text_rect = text_surf.get_rect(midleft=(self.rect.x + 8, self.rect.centery))
+        
+        text_surf = FONT_MAIN.render(txt_to_render, True, color)
+        
+        # Calculate Cursor Position
+        # We need to know where the cursor is relative to the start of the text
+        if self.text:
+             cursor_x = FONT_MAIN.size(self.text[:self.cursor_pos])[0]
+        else:
+             cursor_x = 0
+             
+        # Scroll Logic
+        # text_surf.get_width() is total width
+        # cursor_x is where the cursor is
+        # relative_cursor_x = cursor_x - self.scroll_offset
+        # if relative_cursor_x < 0: scroll left
+        # if relative_cursor_x > clip_rect.width: scroll right
+        
+        if cursor_x - self.scroll_offset < 5:
+            self.scroll_offset = max(0, cursor_x - 5)
+        elif cursor_x - self.scroll_offset > clip_rect.width - 5:
+            self.scroll_offset = cursor_x - (clip_rect.width - 5)
+            
+        # Ensure scroll doesn't go too far if text is short (optional, but good for feel)
+        max_scroll = max(0, text_surf.get_width() - clip_rect.width)
+        # However, we want to allow scrolling to see the cursor even if at the end of a long string.
+        # Actually standard behavior is to clamp such that text fills the area if possible, 
+        # but if cursor forces it, that overrides.
+        
+        draw_x = self.rect.x + 8 - self.scroll_offset
+        text_rect = text_surf.get_rect(midleft=(draw_x, self.rect.centery))
         surface.blit(text_surf, text_rect)
+
+        # Draw Cursor
+        if self.active and self.cursor_visible:
+             cur_draw_x = self.rect.x + 8 + cursor_x - self.scroll_offset
+             # Only draw if inside clip
+             if self.rect.x + 8 <= cur_draw_x <= self.rect.x + 8 + clip_rect.width:
+                 p1 = (cur_draw_x, self.rect.centery - 10)
+                 p2 = (cur_draw_x, self.rect.centery + 10)
+                 pygame.draw.line(surface, COLOR_HIGHLIGHT, p1, p2, 2)
 
         surface.set_clip(old_clip)
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
+            if self.clear_rect and self.clear_rect.collidepoint(event.pos):
+                self.text = ""
+                self.cursor_pos = 0
+                self.scroll_offset = 0
+                self.active = True
+                return True
+                
             self.active = self.rect.collidepoint(event.pos)
+            if self.active:
+                # Approximate cursor click position detection
+                click_x = event.pos[0] - (self.rect.x + 8) + self.scroll_offset
+                # Iterate to find closest char index
+                best_idx = len(self.text)
+                min_dist = 999999
+                curr_w = 0
+                for i in range(len(self.text) + 1):
+                    w = FONT_MAIN.size(self.text[:i])[0]
+                    dist = abs(w - click_x)
+                    if dist < min_dist:
+                        min_dist = dist
+                        best_idx = i
+                self.cursor_pos = best_idx
+
         elif event.type == pygame.KEYDOWN and self.active:
             if event.key == pygame.K_BACKSPACE:
-                self.text = self.text[:-1]
+                if self.cursor_pos > 0:
+                    if pygame.key.get_mods() & pygame.KMOD_CTRL:
+                         # delete last word logic relative to cursor? 
+                         # usually ctrl+backspace deletes word BEFORE cursor
+                         before = self.text[:self.cursor_pos]
+                         after = self.text[self.cursor_pos:]
+                         import re
+                         # Remove trailing word
+                         new_before = re.sub(r'(\S+\s*)$', '', before)
+                         self.text = new_before + after
+                         self.cursor_pos = len(new_before)
+                    else:
+                        self.text = self.text[:self.cursor_pos-1] + self.text[self.cursor_pos:]
+                        self.cursor_pos -= 1
+            elif event.key == pygame.K_DELETE:
+                if self.cursor_pos < len(self.text):
+                     self.text = self.text[:self.cursor_pos] + self.text[self.cursor_pos+1:]
+                     # cursor stays same
+            elif event.key == pygame.K_LEFT:
+                self.cursor_pos = max(0, self.cursor_pos - 1)
+            elif event.key == pygame.K_RIGHT:
+                self.cursor_pos = min(len(self.text), self.cursor_pos + 1)
+            elif event.key == pygame.K_HOME:
+                self.cursor_pos = 0
+            elif event.key == pygame.K_END:
+                self.cursor_pos = len(self.text)
             elif event.key == pygame.K_RETURN:
                 self.active = False
+            elif event.key == pygame.K_v and (pygame.key.get_mods() & pygame.KMOD_CTRL):
+                 # Paste support
+                 if pygame.scrap.get_init():
+                     pass # setup required, maybe later
             else:
                 if self.numeric and not event.unicode.isdigit():
                     return
-                self.text += event.unicode
+                # Filter printable
+                if len(event.unicode) > 0 and event.unicode.isprintable():
+                    self.text = self.text[:self.cursor_pos] + event.unicode + self.text[self.cursor_pos:]
+                    self.cursor_pos += 1
 
 class Dropdown:
     def __init__(self, x, y, width, height, label, options, default_index=0):
@@ -200,8 +331,8 @@ class MemoryVisualizer:
         self.clock = pygame.time.Clock()
         
         self.default_reference_text = (
-            "0 R, 4 R, 8 R, 12 R, 16 R, 0 R, 4 R, 20 R, "
-            "24 R, 28 R, 32 R, 0 W, 4 W, 36 R, 40 R"
+            "0 R, 4 R, 8 R, 0 W, 4 W, 8 R, 12 R, 16 R, "
+            "12 W, 0 R, 4 R, 20 R, 20 W, 12 R, 8 R"
         )
         self.reference_string = self.parse_reference_string(self.default_reference_text)
         self.vm_config = VMConfig(
@@ -447,7 +578,7 @@ class MemoryVisualizer:
         header_h = 60
         gap = 12
 
-        row2_h = 500
+        row2_h = 600
         
         row2_y = header_h + gap
 
@@ -488,7 +619,8 @@ class MemoryVisualizer:
         base_y = layout["row2_y"] + 70
         field_w = layout["col1_w"] - 28
         field_h = 28
-        spacing = 44
+        spacing = 60 # Increased spacing to prevent label overlap
+
         gap_small = 10
         btn_h = 30
         
